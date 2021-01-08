@@ -1,0 +1,51 @@
+#---------------------------------#
+#      environment configuration  #
+#---------------------------------#
+version: 0.1.{build}
+image: Visual Studio 2019
+
+#---------------------------------#
+#      install configuration      #
+#---------------------------------#
+install:
+    - ps: |
+        Write-Host "Install prerequisites" -ForegroundColor Yellow
+        $null = Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction Stop
+
+#---------------------------------#
+#      build configuration        #
+#---------------------------------#
+build_script:
+    - ps: |
+        Write-Host "Build project" -ForegroundColor Yellow
+        Write-Host "Build version : $env:APPVEYOR_BUILD_VERSION"
+        Write-Host "Branch        : $env:APPVEYOR_REPO_BRANCH"
+        Write-Host "Repo          : $env:APPVEYOR_REPO_NAME"
+        Write-Host "Build DscResource.Test..." -ForegroundColor Yellow
+        .\build.ps1 -ResolveDependency
+        Write-Host "...completed!" -ForegroundColor Green
+
+#---------------------------------#
+#      test configuration         #
+#---------------------------------#
+test_script:
+    - ps: |
+        Write-Host "Running Test script" -ForegroundColor Yellow
+        $testResultsFile = ".\output\TestsResults.xml"
+        Write-Host "All tests passed!" -ForegroundColor Green
+        dir .\output\testResults
+        $res = Invoke-DscResourceTest -Module DscResource.Test -Path .\output\DscResource.Test\0.0.1 -OutputFile $testResultsFile -PassThru
+        $URI = "https://ci.appveyor.com/api/testresults/nunit/$($env:APPVEYOR_JOB_ID)"
+        $WC  = New-Object 'System.Net.WebClient'
+        Write-Host "About to upload file: $(Resolve-Path $testResultsFile)"
+        try {
+            $WC.UploadFile($URI, (Resolve-Path $testResultsFile))
+        } catch {
+            Write-Host "Uploading failed!" -ForegroundColor Red
+        }
+
+        if (($res.FailedCount -gt 0) -or ($res.PassedCount -eq 0) -or ($null -eq $res)) {
+            throw "$($res.FailedCount) tests failed."
+        } else {
+            Write-Host "All tests passed!" -ForegroundColor Green
+        }
